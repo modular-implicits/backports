@@ -18,6 +18,8 @@ class printer :
     val semi : bool
     method binding :
       Format.formatter -> Parsetree.value_binding -> unit
+    method binding_op :
+      Format.formatter -> Parsetree.binding_op -> unit
     method bindings:
         Format.formatter ->
           Asttypes.rec_flag * Parsetree.value_binding list ->

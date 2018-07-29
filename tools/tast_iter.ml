@@ -167,10 +167,15 @@ let expression sub exp =
       sub # class_structure cl
   | Texp_pack (mexpr) ->
       sub # module_expr mexpr
-
+  | Texp_letop {let_; ands; body; partial = _} ->
+      sub # binding_op let_;
+      List.iter (sub # binding_op) ands;
+      sub # case body
 
 let package_type sub pack =
   List.iter (fun (_s, ct) -> sub # core_type ct) pack.pack_fields
+
+let binding_op sub x = ignore (sub # expression x.bop_exp)
 
 let signature sub sg =
   List.iter (sub # signature_item) sg.sig_items
@@ -372,6 +377,7 @@ let binding sub vb =
 
 class iter = object(this)
   method binding = binding this
+  method binding_op = binding_op this
   method bindings = bindings this
   method case = case this
   method cases = cases this

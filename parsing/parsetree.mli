@@ -331,8 +331,18 @@ and expression_desc =
            let! open M in E
            let open implicit M in E
         *)
+  | Pexp_letop of letop
+        (* let* P = E in E
+           let* P = E and* P = E in E *)
   | Pexp_extension of extension
         (* [%id] *)
+
+and letop =
+    {
+     let_ : binding_op;
+     ands : binding_op list;
+     body : expression;
+    }
 
 and case =   (* (P -> E) or (P when E0 -> E) *)
     {
@@ -340,6 +350,14 @@ and case =   (* (P -> E) or (P when E0 -> E) *)
      pc_guard: expression option;
      pc_rhs: expression;
     }
+
+and binding_op =
+  {
+    pbop_op : string loc;
+    pbop_pat : pattern;
+    pbop_exp : expression;
+    pbop_loc : Location.t;
+  }
 
 (* Value descriptions *)
 

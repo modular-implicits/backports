@@ -625,6 +625,29 @@ let rec cut n l =
 
 let try_ids = Hashtbl.create 8
 
+let transl_ident loc env _ty path desc =
+  match desc.val_kind with
+  | Val_prim p ->
+      let public_send = p.prim_name = "%send" in
+      if public_send || p.prim_name = "%sendself" then
+        let kind = if public_send then Public else Self in
+        let obj = Ident.create "obj" and meth = Ident.create "meth" in
+        Lfunction(Curried, [obj; meth], Lsend(kind, Lvar meth, Lvar obj, [],
+                                              loc))
+      else if p.prim_name = "%sendcache" then
+        let obj = Ident.create "obj" and meth = Ident.create "meth" in
+        let cache = Ident.create "cache" and pos = Ident.create "pos" in
+        Lfunction(Curried, [obj; meth; cache; pos],
+                  Lsend(Cached, Lvar meth, Lvar obj, [Lvar cache; Lvar pos],
+                        loc))
+      else
+        transl_primitive loc p
+  | Val_anc _ ->
+      raise(Error(loc, Free_super_var))
+  | Val_reg | Val_self _ ->
+      transl_path ~loc:loc env path
+  | _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
+
 let rec transl_exp e =
   let eval_once =
     (* Whether classes for immediate objects must be cached *)
@@ -637,26 +660,8 @@ let rec transl_exp e =
 
 and transl_exp0 e =
   match e.exp_desc with
-    Texp_ident(path, _, {val_kind = Val_prim p}) ->
-      let public_send = p.prim_name = "%send" in
-      if public_send || p.prim_name = "%sendself" then
-        let kind = if public_send then Public else Self in
-        let obj = Ident.create "obj" and meth = Ident.create "meth" in
-        Lfunction(Curried, [obj; meth], Lsend(kind, Lvar meth, Lvar obj, [],
-                                              e.exp_loc))
-      else if p.prim_name = "%sendcache" then
-        let obj = Ident.create "obj" and meth = Ident.create "meth" in
-        let cache = Ident.create "cache" and pos = Ident.create "pos" in
-        Lfunction(Curried, [obj; meth; cache; pos],
-                  Lsend(Cached, Lvar meth, Lvar obj, [Lvar cache; Lvar pos],
-                        e.exp_loc))
-      else
-        transl_primitive e.exp_loc p
-  | Texp_ident(path, _, {val_kind = Val_anc _}) ->
-      raise(Error(e.exp_loc, Free_super_var))
-  | Texp_ident(path, _, {val_kind = Val_reg | Val_self _}) ->
-      transl_path ~loc:e.exp_loc e.exp_env path
-  | Texp_ident _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
+  | Texp_ident(path, _, desc) ->
+      transl_ident e.exp_loc e.exp_env e.exp_type path desc
   | Texp_constant cst ->
       Lconst(Const_base cst)
   | Texp_let(rec_flag, pat_expr_list, body) ->
@@ -929,6 +934,15 @@ and transl_exp0 e =
           cl_env = e.exp_env;
           cl_attributes = [];
          }
+  | Texp_letop{let_; ands; body; partial} ->
+      event_after e
+        (transl_letop e.exp_loc e.exp_env let_ ands body partial)
+
+and pure_module m =
+  match m.mod_desc with
+    Tmod_ident _ -> Alias
+  | Tmod_constraint (m,_,_,_) -> pure_module m
+  | _ -> Strict
 
 and transl_list expr_list =
   List.map transl_exp expr_list
@@ -1174,6 +1188,38 @@ and transl_match e arg pat_expr_list exn_pat_expr_list partial =
     static_catch [transl_exp arg] [val_id]
       (Matching.for_function e.exp_loc None (Lvar val_id) cases partial)
 
+and transl_letop loc env let_ ands case partial =
+  let rec loop prev_lam = function
+    | [] -> prev_lam
+    | and_ :: rest ->
+        let left_id = Ident.create "left" in
+        let right_id = Ident.create "right" in
+        let op =
+          transl_ident and_.bop_op_name.loc env
+            and_.bop_op_type and_.bop_op_path and_.bop_op_val
+        in
+        let exp = transl_exp and_.bop_exp in
+        let lam =
+          bind Strict right_id exp
+            (Lapply (op, [Lvar left_id; Lvar right_id], and_.bop_loc))
+        in
+        bind Strict left_id prev_lam (loop lam rest)
+  in
+  let op =
+    transl_ident let_.bop_op_name.loc env
+      let_.bop_op_type let_.bop_op_path let_.bop_op_val
+  in
+  let exp = loop (transl_exp let_.bop_exp) ands in
+  let func =
+    let (kind, params), body =
+      event_function case.c_rhs
+        (function repr ->
+           transl_function case.c_rhs.exp_loc
+             !Clflags.native_code repr partial [case])
+    in
+    Lfunction(kind, params, body)
+  in
+  Lapply(op, [exp; func], loc)
 
 (* Wrapper for class compilation *)
 
