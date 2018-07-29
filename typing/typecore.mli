@@ -115,6 +115,10 @@ type error =
   | Ambiguous_implicit of Typeimplicit.pending_implicit * Path.t * Path.t
   | Termination_fail of Typeimplicit.pending_implicit
 
+  | Letop_type_clash of string * Ctype.Unification_trace.t
+  | Andop_type_clash of string * Ctype.Unification_trace.t
+  | Bindings_type_clash of Ctype.Unification_trace.t
+
 exception Error of Location.t * Env.t * error
 exception Error_forward of Location.error
 

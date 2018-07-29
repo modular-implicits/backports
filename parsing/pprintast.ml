@@ -34,6 +34,20 @@ let numeric_chars  = [ '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7'; '8'; '9' ]
 let special_infix_strings =
   ["asr"; "land"; "lor"; "lsl"; "lsr"; "lxor"; "mod"; "or"; ":="; "!=" ]
 
+let letop s =
+  String.length s > 3
+  && s.[0] = 'l'
+  && s.[1] = 'e'
+  && s.[2] = 't'
+  && List.mem s.[3] infix_symbols
+
+let andop s =
+  String.length s > 3
+  && s.[0] = 'a'
+  && s.[1] = 'n'
+  && s.[2] = 'd'
+  && List.mem s.[3] infix_symbols
+
 (* determines if the string is an infix string.
    checks backwards, first allowing a renaming postfix ("_102") which
    may have resulted from Pexp -> Texp -> Pexp translation, then checking
@@ -43,6 +57,8 @@ let fixity_of_string  = function
   | s when List.mem s special_infix_strings -> `Infix s
   | s when List.mem s.[0] infix_symbols -> `Infix s
   | s when List.mem s.[0] prefix_symbols -> `Prefix s
+  | s when letop s -> `Letop s
+  | s when andop s -> `Andop s
   | _ -> `Normal
 
 let view_fixity_of_exp = function
@@ -50,6 +66,7 @@ let view_fixity_of_exp = function
   | _ -> `Normal  ;;
 
 let is_infix  = function  | `Infix _ -> true | _  -> false
+let is_kwdop = function `Letop _ | `Andop _ -> true | _ -> false
 
 let is_predef_option = function
   | (Ldot (Lident "*predef*","option")) -> true
@@ -57,7 +74,9 @@ let is_predef_option = function
 
 (* which identifiers are in fact operators needing parentheses *)
 let needs_parens txt =
-  is_infix (fixity_of_string txt)
+  let fix = fixity_of_string txt in
+  is_infix fix
+  || is_kwdop fix
   || List.mem txt.[0] prefix_symbols
 
 (* some infixes need spaces around parens to avoid clashes with comment
@@ -547,7 +566,7 @@ class printer  ()= object(self:'self)
         self#paren true self#reset#expression f x
     | Pexp_ifthenelse _ | Pexp_sequence _ when ifthenelse ->
         self#paren true self#reset#expression f x
-    | Pexp_let _ | Pexp_letmodule _ when semi ->
+    | Pexp_let _ | Pexp_letmodule _ | Pexp_letop _ when semi ->
         self#paren true self#reset#expression f x
     | Pexp_fun (l, e0, p, e) ->
         pp f "@[<2>fun@;%a@;->@;%a@]"
@@ -643,6 +662,11 @@ class printer  ()= object(self:'self)
           self#expression  e
     | Pexp_variant (l,Some eo) ->
         pp f "@[<2>`%s@;%a@]" l  self#simple_expr eo
+    | Pexp_letop {let_; ands; body} ->
+        pp f "@[<2>@[<v>%a@,%a@] in@;<1 -2>%a@]"
+          (binding_op ctxt) let_
+          (list ~sep:"@," (binding_op ctxt)) ands
+          (expression ctxt) body
     | Pexp_extension e -> self#extension f e
     | _ -> self#expression1 f x
   method expression1 f x =
@@ -656,7 +680,6 @@ class printer  ()= object(self:'self)
     else match x.pexp_desc with
     | Pexp_field (e, li) -> pp f "@[<hov2>%a.%a@]" self#simple_expr e self#longident_loc li
     | Pexp_send (e, s) ->  pp f "@[<hov2>%a#%s@]" self#simple_expr e  s
-
     | _ -> self#simple_expr f x
   method simple_expr f x =
     if x.pexp_attributes <> [] then self#expression f x
@@ -1257,6 +1280,9 @@ class printer  ()= object(self:'self)
         self#item_extension f e;
         self#item_attributes f a
   end
+  method binding_op f x =
+    pp f "@[<2>%s %a@;=@;%a@]"
+      x.pbop_op.txt (self#pattern) x.pbop_pat (self#expression) x.pbop_exp
   method type_param f (ct, a) =
     pp f "%s%a" (type_variance a) self#core_type ct
   method type_params f = function

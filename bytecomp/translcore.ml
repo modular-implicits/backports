@@ -625,6 +625,16 @@ let rec cut n l =
 
 let try_ids = Hashtbl.create 8
 
+let transl_ident loc env ty path desc =
+  match desc.val_kind with
+  | Val_prim p ->
+      Translprim.transl_primitive loc p env ty (Some path)
+  | Val_anc _ ->
+      raise(Error(loc, Free_super_var))
+  | Val_reg | Val_self _ ->
+      transl_value_path loc env path
+  |  _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
+
 let rec transl_exp e =
   let eval_once =
     (* Whether classes for immediate objects must be cached *)
@@ -637,6 +647,7 @@ let rec transl_exp e =
 
 and transl_exp0 e =
   match e.exp_desc with
+(* <<<<<<< HEAD *)
     Texp_ident(path, _, {val_kind = Val_prim p}) ->
       let public_send = p.prim_name = "%send" in
       if public_send || p.prim_name = "%sendself" then
@@ -657,6 +668,10 @@ and transl_exp0 e =
   | Texp_ident(path, _, {val_kind = Val_reg | Val_self _}) ->
       transl_path ~loc:e.exp_loc e.exp_env path
   | Texp_ident _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
+(* ======= *)
+(*   | Texp_ident(path, _, desc) -> *)
+(*       transl_ident e.exp_loc e.exp_env e.exp_type path desc *)
+(* >>>>>>> 403003cad (Add support for "let" operators) *)
   | Texp_constant cst ->
       Lconst(Const_base cst)
   | Texp_let(rec_flag, pat_expr_list, body) ->
@@ -929,6 +944,37 @@ and transl_exp0 e =
           cl_env = e.exp_env;
           cl_attributes = [];
          }
+  | Texp_letop{let_; ands; param; body; partial} ->
+      event_after e
+        (transl_letop e.exp_loc e.exp_env let_ ands param body partial)
+  | Texp_unreachable ->
+      raise (Error (e.exp_loc, Unreachable_reached))
+  | Texp_open (od, e) ->
+      let pure = pure_module od.open_expr in
+      (* this optimization shouldn't be needed because Simplif would
+          actually remove the [Llet] when it's not used.
+          But since [scan_used_globals] runs before Simplif, we need to
+          do it. *)
+      begin match od.open_bound_items with
+      | [] when pure = Alias -> transl_exp e
+      | _ ->
+          let oid = Ident.create_local "open" in
+          let body, _ =
+            List.fold_left (fun (body, pos) id ->
+              Llet(Alias, Pgenval, id,
+                   Lprim(Pfield pos, [Lvar oid], od.open_loc), body),
+              pos + 1
+            ) (transl_exp e, 0) (bound_value_identifiers od.open_bound_items)
+          in
+          Llet(pure, Pgenval, oid,
+               !transl_module Tcoerce_none None od.open_expr, body)
+      end
+
+and pure_module m =
+  match m.mod_desc with
+    Tmod_ident _ -> Alias
+  | Tmod_constraint (m,_,_,_) -> pure_module m
+  | _ -> Strict
 
 and transl_list expr_list =
   List.map transl_exp expr_list
@@ -1174,6 +1220,51 @@ and transl_match e arg pat_expr_list exn_pat_expr_list partial =
     static_catch [transl_exp arg] [val_id]
       (Matching.for_function e.exp_loc None (Lvar val_id) cases partial)
 
+and transl_letop loc env let_ ands param case partial =
+  let rec loop prev_lam = function
+    | [] -> prev_lam
+    | and_ :: rest ->
+        let left_id = Ident.create_local "left" in
+        let right_id = Ident.create_local "right" in
+        let op =
+          transl_ident and_.bop_op_name.loc env
+            and_.bop_op_type and_.bop_op_path and_.bop_op_val
+        in
+        let exp = transl_exp and_.bop_exp in
+        let lam =
+          bind Strict right_id exp
+            (Lapply{ap_should_be_tailcall = false;
+                    ap_loc = and_.bop_loc;
+                    ap_func = op;
+                    ap_args=[Lvar left_id; Lvar right_id];
+                    ap_inlined=Default_inline;
+                    ap_specialised=Default_specialise})
+        in
+        bind Strict left_id prev_lam (loop lam rest)
+  in
+  let op =
+    transl_ident let_.bop_op_name.loc env
+      let_.bop_op_type let_.bop_op_path let_.bop_op_val
+  in
+  let exp = loop (transl_exp let_.bop_exp) ands in
+  let func =
+    let return_kind = value_kind case.c_rhs.exp_env case.c_rhs.exp_type in
+    let (kind, params, return), body =
+      event_function case.c_rhs
+        (function repr ->
+           transl_function case.c_rhs.exp_loc return_kind
+             !Clflags.native_code repr partial param [case])
+    in
+    let attr = default_function_attribute in
+    let loc = case.c_rhs.exp_loc in
+    Lfunction{kind; params; return; body; attr; loc}
+  in
+  Lapply{ap_should_be_tailcall = false;
+         ap_loc = loc;
+         ap_func = op;
+         ap_args=[exp; func];
+         ap_inlined=Default_inline;
+         ap_specialised=Default_specialise}
 
 (* Wrapper for class compilation *)
 

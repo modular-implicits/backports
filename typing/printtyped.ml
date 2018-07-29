@@ -402,12 +402,22 @@ and expression i ppf x =
   | Texp_pack me ->
       line i ppf "Pexp_pack";
       module_expr i ppf me
+  | Texp_letop {let_; ands; param = _; body; partial = _} ->
+      line i ppf "Texp_letop";
+      binding_op (i+1) ppf let_;
+      list (i+1) binding_op ppf ands;
+      case i ppf body
 
 and value_description i ppf x =
   line i ppf "value_description %a %a\n" fmt_ident x.val_id fmt_location x.val_loc;
   attributes i ppf x.val_attributes;
   core_type (i+1) ppf x.val_desc;
   list (i+1) string ppf x.val_prim;
+
+and binding_op i ppf x =
+  line i ppf "binding_op %a %a\n" fmt_path x.bop_op_path
+    fmt_location x.bop_loc;
+  expression i ppf x.bop_exp
 
 and type_parameter i ppf (x, _variance) = core_type i ppf x
 
