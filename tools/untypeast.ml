@@ -43,6 +43,22 @@ let rec lident_of_path path =
     | Path.Papply (p1, p2, i) ->
         Longident.Lapply (lident_of_path p1, lident_of_path p2, i)
 
+(** Extract the [n] patterns from the case of a letop *)
+let rec extract_letop_patterns n pat =
+  if n = 0 then pat, []
+  else begin
+    match pat.pat_desc with
+    | Tpat_tuple([first; rest]) ->
+        let next, others = extract_letop_patterns (n-1) rest in
+        first, next :: others
+    | _ ->
+      let rec anys n =
+        if n = 0 then []
+        else { pat with pat_desc = Tpat_any } :: anys (n-1)
+      in
+      { pat with pat_desc = Tpat_any }, anys (n-1)
+  end
+
 let rec untype_structure str =
   List.map untype_structure_item str.str_items
 
@@ -373,6 +389,14 @@ and untype_expression exp =
         Pexp_object (untype_class_structure cl)
     | Texp_pack (mexpr) ->
         Pexp_pack (untype_module_expr mexpr)
+    | Texp_letop {let_; ands; body; _} ->
+        let pat, and_pats =
+          extract_letop_patterns (List.length ands) body.c_lhs
+        in
+        let let_ = untype_binding_op let_ pat in
+        let ands = List.map2 untype_binding_op ands and_pats in
+        let body = untype_expression body.c_rhs in
+        Pexp_letop {let_; ands; body }
   in
   List.fold_right untype_extra exp.exp_extra
     (Exp.mk ~loc:exp.exp_loc ~attrs:exp.exp_attributes desc)
@@ -382,6 +406,13 @@ and untype_argument arg list =
     None -> list
   | Some exp -> (untype_apply_flag arg.arg_flag,
                  untype_expression exp) :: list
+
+and untype_binding_op bop pat =
+  let pbop_op = bop.bop_op_name in
+  let pbop_pat = untype_pattern pat in
+  let pbop_exp = untype_expression bop.bop_exp in
+  let pbop_loc = bop.bop_loc in
+  {pbop_op; pbop_pat; pbop_exp; pbop_loc}
 
 and untype_package_type pack =
   (pack.pack_txt,

@@ -194,6 +194,10 @@ let rec add_expr bv exp =
   | Pexp_pack m -> add_module bv m
   | Pexp_open (_ovf, m, e) -> addmodule bv m; add_expr bv e
   | Pexp_extension _ -> ()
+  | Pexp_letop {let_; ands; body} ->
+    let bv' = add_binding_op bv bv let_ in
+    let bv' = List.fold_left (add_binding_op bv) bv' ands in
+    add_expr bv' body
 
 and add_cases bv cases =
   List.iter (add_case bv) cases
@@ -208,6 +212,10 @@ and add_bindings recf bv pel =
   let bv = if recf = Recursive then bv' else bv in
   List.iter (fun x -> add_expr bv x.pvb_expr) pel;
   bv'
+
+and add_binding_op bv bv' pbop =
+  add_expr bv pbop.pbop_exp;
+  add_pattern bv' pbop.pbop_pat
 
 and add_modtype bv mty =
   match mty.pmty_desc with
