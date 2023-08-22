@@ -104,7 +104,9 @@ and expression_desc =
   | Texp_lazy of expression
   | Texp_object of class_structure * string list
   | Texp_pack of module_expr
-  | Texp_letop of {
+  | Texp_letop of letop
+
+and letop = {
       let_ : binding_op;
       ands : binding_op list;
       param : Ident.t;
