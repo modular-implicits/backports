@@ -391,7 +391,6 @@ module E = struct
         letop ~loc ~attrs (sub.binding_op sub let_)
           (List.map (sub.binding_op sub) ands) (sub.expr sub body)
     | Pexp_extension x -> extension ~loc ~attrs (sub.extension sub x)
-    | Pexp_unreachable -> unreachable ~loc ~attrs ()
 
   let map_binding_op sub {pbop_op; pbop_pat; pbop_exp; pbop_loc} =
     let open Exp in
