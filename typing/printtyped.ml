@@ -402,7 +402,7 @@ and expression i ppf x =
   | Texp_pack me ->
       line i ppf "Pexp_pack";
       module_expr i ppf me
-  | Texp_letop {let_; ands; param = _; body; partial = _} ->
+  | Texp_letop {let_; ands; body; partial = _} ->
       line i ppf "Texp_letop";
       binding_op (i+1) ppf let_;
       list (i+1) binding_op ppf ands;

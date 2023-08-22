@@ -357,11 +357,10 @@ module MakeMap(Map : MapArgument) = struct
           Texp_object (map_class_structure cl, string_list)
         | Texp_pack (mexpr) ->
           Texp_pack (map_module_expr mexpr)
-        | Texp_letop {let_; ands; param; body; partial} ->
+        | Texp_letop {let_; ands; body; partial} ->
           Texp_letop{
             let_ = map_binding_op let_;
             ands = List.map map_binding_op ands;
-            param;
             body = map_case body;
             partial;
           }

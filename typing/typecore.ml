@@ -71,9 +71,9 @@ type error =
   | No_instance_found of Typeimplicit.pending_implicit
   | Ambiguous_implicit of Typeimplicit.pending_implicit * Path.t * Path.t
   | Termination_fail of Typeimplicit.pending_implicit
-  | Letop_type_clash of string * Ctype.Unification_trace.t
-  | Andop_type_clash of string * Ctype.Unification_trace.t
-  | Bindings_type_clash of Ctype.Unification_trace.t
+  | Letop_type_clash of string * (type_expr * type_expr) list
+  | Andop_type_clash of string * (type_expr * type_expr) list
+  | Bindings_type_clash of (type_expr * type_expr) list
 
 exception Error of Location.t * Env.t * error
 exception Error_forward of Location.error
@@ -1825,7 +1825,7 @@ and type_expect_ ?in_function env sexp ty_expected =
   in
   match sexp.pexp_desc with
   | Pexp_ident lid ->
-      let math, desc = type_ident env ~recarg lid in
+      let path, desc = type_ident env lid in
       let exp_desc =
         match desc.val_kind with
         | Val_ivar (_, cl_num) ->
@@ -1848,10 +1848,10 @@ and type_expect_ ?in_function env sexp ty_expected =
       in
       rue {
         exp_desc; exp_loc = loc; exp_extra = [];
-        exp_type = instance desc.val_type;
+        exp_type = instance env desc.val_type;
         exp_attributes = sexp.pexp_attributes;
         exp_env = env }
-  | Pexp_constant(Pconst_string (str, _) as cst) -> (
+  | Pexp_constant(Const_string (str, _) as cst) -> (
     (* Terrible hack for format strings *)
     let ty_exp = expand_head env ty_expected in
     let fmt6_path =
@@ -2775,15 +2775,15 @@ and type_expect_ ?in_function env sexp ty_expected =
       if !Clflags.principal then begin_def ();
       let let_loc = slet.pbop_op.loc in
       let op_path, op_desc = type_binding_op_ident env slet.pbop_op in
-      let op_type = instance op_desc.val_type in
+      let op_type = instance env op_desc.val_type in
       let spat_params, ty_params = loop slet.pbop_pat (newvar ()) sands in
       let ty_func_result = newvar () in
-      let ty_func = newty (Tarrow(Nolabel, ty_params, ty_func_result, Cok)) in
+      let ty_func = newty (Tarrow(Tarr_simple, ty_params, ty_func_result, Cok)) in
       let ty_result = newvar () in
       let ty_andops = newvar () in
       let ty_op =
-        newty (Tarrow(Nolabel, ty_andops,
-          newty (Tarrow(Nolabel, ty_func, ty_result, Cok)), Cok))
+        newty (Tarrow(Tarr_simple, ty_andops,
+          newty (Tarrow(Tarr_simple, ty_func, ty_result, Cok)), Cok))
       in
       begin try
         unify env op_type ty_op
@@ -2807,7 +2807,6 @@ and type_expect_ ?in_function env sexp ty_expected =
         | [case] -> case
         | _ -> assert false
       in
-      let param = name_cases "param" cases in
       let let_ =
         { bop_op_name = slet.pbop_op;
           bop_op_path = op_path;
@@ -2817,24 +2816,18 @@ and type_expect_ ?in_function env sexp ty_expected =
           bop_loc = slet.pbop_loc; }
       in
       let desc =
-        Texp_letop{let_; ands; param; body; partial}
+        Texp_letop{let_; ands; body; partial}
       in
       rue { exp_desc = desc;
             exp_loc = sexp.pexp_loc;
             exp_extra = [];
-            exp_type = instance ty_result;
+            exp_type = instance env ty_result;
             exp_env = env;
             exp_attributes = sexp.pexp_attributes; }
   | Pexp_extension ext ->
       raise (Error_forward (Typetexp.error_of_extension ext))
-  | Pexp_unreachable ->
-      re { exp_desc = Texp_unreachable;
-           exp_loc = loc; exp_extra = [];
-           exp_type = instance ty_expected;
-           exp_attributes = sexp.pexp_attributes;
-           exp_env = env }
 
-and type_ident env ?(recarg=Rejected) lid =
+and type_ident env lid =
   let (path, desc) = Typetexp.find_value env lid.loc lid.txt in
   if !Clflags.annotations then begin
     let dloc = desc.Types.val_loc in
@@ -2843,7 +2836,7 @@ and type_ident env ?(recarg=Rejected) lid =
       else Annot.Iref_internal dloc
     in
     let name = Path.name ~paren:Oprint.parenthesized_ident path in
-    Stypes.record (Stypes.An_ident (loc, name, annot))
+    Stypes.record (Stypes.An_ident (lid.loc, name, annot))
   end;
   path, desc
 
@@ -4088,16 +4081,16 @@ and type_let ?(check = fun s -> Warnings.Unused_var s)
 and type_andops env sarg sands expected_ty =
   let rec loop env let_sarg rev_sands expected_ty =
     match rev_sands with
-    | [] -> type_expect env let_sarg (mk_expected expected_ty), []
+    | [] -> type_expect env let_sarg expected_ty, []
     | { pbop_op = sop; pbop_exp = sexp; pbop_loc = loc; _ } :: rest ->
         if !Clflags.principal then begin_def ();
         let op_path, op_desc = type_binding_op_ident env sop in
-        let op_type = instance op_desc.val_type in
+        let op_type = instance env op_desc.val_type in
         let ty_arg = newvar () in
         let ty_rest = newvar () in
         let ty_result = newvar() in
-        let ty_rest_fun = newty (Tarrow(Nolabel, ty_arg, ty_result, Cok)) in
-        let ty_op = newty (Tarrow(Nolabel, ty_rest, ty_rest_fun, Cok)) in
+        let ty_rest_fun = newty (Tarrow(Tarr_simple, ty_arg, ty_result, Cok)) in
+        let ty_op = newty (Tarrow(Tarr_simple, ty_rest, ty_rest_fun, Cok)) in
         begin try
           unify env op_type ty_op
         with Unify trace ->
@@ -4110,9 +4103,9 @@ and type_andops env sarg sands expected_ty =
           generalize_structure ty_result
         end;
         let let_arg, rest = loop env let_sarg rest ty_rest in
-        let exp = type_expect env sexp (mk_expected ty_arg) in
+        let exp = type_expect env sexp ty_arg in
         begin try
-          unify env (instance ty_result) (instance expected_ty)
+          unify env (instance env ty_result) (instance env expected_ty)
         with Unify trace ->
           raise(Error(loc, env, Bindings_type_clash(trace)))
         end;

@@ -108,7 +108,6 @@ and expression_desc =
 and letop = {
       let_ : binding_op;
       ands : binding_op list;
-      param : Ident.t;
       body : case;
       partial : partial;
     }
