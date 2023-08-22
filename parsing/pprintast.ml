@@ -664,9 +664,9 @@ class printer  ()= object(self:'self)
         pp f "@[<2>`%s@;%a@]" l  self#simple_expr eo
     | Pexp_letop {let_; ands; body} ->
         pp f "@[<2>@[<v>%a@,%a@] in@;<1 -2>%a@]"
-          (binding_op ctxt) let_
-          (list ~sep:"@," (binding_op ctxt)) ands
-          (expression ctxt) body
+          self#binding_op let_
+          (self#list ~sep:"@," self#binding_op) ands
+          self#expression body
     | Pexp_extension e -> self#extension f e
     | _ -> self#expression1 f x
   method expression1 f x =
