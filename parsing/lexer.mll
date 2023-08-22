@@ -488,8 +488,6 @@ rule token = parse
   | '%'     { PERCENT }
   | ['*' '/' '%'] symbolchar *
             { INFIXOP3(Lexing.lexeme lexbuf) }
-  | '#' (symbolchar | '#') +
-            { HASHOP(Lexing.lexeme lexbuf) }
   | "let" kwdopchar dotsymbolchar *
             { LETOP(Lexing.lexeme lexbuf) }
   | "and" kwdopchar dotsymbolchar *
