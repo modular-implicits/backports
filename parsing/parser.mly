@@ -345,7 +345,6 @@ let mkctf_attrs d attrs =
 %token <string> INFIXOP2
 %token <string> INFIXOP3
 %token <string> INFIXOP4
-%token <string> DOTOP
 %token <string> LETOP
 %token <string> ANDOP
 %token INHERIT
@@ -1123,20 +1122,13 @@ expr:
       { mkexp (Pexp_letmodule($2, $4)) (* FIXME: no attributes *) }
   | LET OPEN open_flag ext_attributes mod_longident IN seq_expr
       { mkexp_attrs (Pexp_open($3, mkrhs $5 5, $7)) $4 }
-  | LET OPEN open_flag mod_longident IN seq_expr
-      { mkexp (Pexp_open($3, mkrhs $4 5, $6)) }
-
-  | LET OPEN override_flag module_expr IN seq_expr
-      { let open_loc = make_loc ($startpos($2), $endpos($4)) in
-        let od = Opn.mk $4 ~override:$3 ~loc:open_loc in
-        Pexp_open(od, $6) }
   | FUNCTION ext_attributes opt_bar match_cases
       { mkexp_attrs (Pexp_function(List.rev $4)) $2 }
   | LETOP letop_bindings IN seq_expr
       { let (pbop_pat, pbop_exp, rev_ands) = $2 in
-        let pbop_loc = make_loc $sloc in
+        let pbop_loc = symbol_rloc() in
         let let_ = {pbop_op = mkrhs $1 1; pbop_pat; pbop_exp; pbop_loc} in
-        mkexp ~loc:$sloc (Pexp_letop{ let_ = let_; ands = List.rev rev_ands; body = $3 }) }
+        mkexp (Pexp_letop{ let_ = let_; ands = List.rev rev_ands; body = $4 }) }
   | FUN ext_attributes labeled_simple_pattern fun_def
       { let (l,o,p) = $3 in
         mkexp_attrs (Pexp_fun(l, o, p, $4)) $2 }
@@ -1386,7 +1378,7 @@ let_bindings_no_attrs:
        l;
      l
    }
-
+;
 lident_list:
     LIDENT                            { [$1] }
   | LIDENT lident_list                { $1 :: $2 }
@@ -1412,24 +1404,23 @@ let_binding_:
       { (ghpat(Ppat_constraint($1, $3)), $5) }
 ;
 letop_binding_body:
-    pat = let_ident exp = strict_binding
-      { (pat, exp) }
-  | pat = simple_pattern COLON typ = core_type EQUAL exp = seq_expr
-      { let loc = ($startpos(pat), $endpos(typ)) in
-        (ghpat ~loc (Ppat_constraint(pat, typ)), exp) }
-  | pat = pattern_no_exn EQUAL exp = seq_expr
-      { (pat, exp) }
+  val_ident strict_binding
+      { (mkpatvar $1 1, $2) }
+  | simple_pattern COLON core_type EQUAL seq_expr
+      { (ghpat(Ppat_constraint($1, $3)), $5) }
+  | pattern EQUAL seq_expr
+      { ($1, $3) }
 ;
 letop_bindings:
     letop_binding_body
-      { let let_pat, let_exp = $1 in
-        let_pat, let_exp, [] }
-  | letop_bindings ANDOP let_binding_body
-      { let let_pat, let_exp, rev_ands = $1 in
-        let pbop_pat, pbop_exp = $3 in
-        let pbop_loc = make_loc $sloc in
+      { let (let_pat, let_exp) = $1 in
+        (let_pat, let_exp, []) }
+  | letop_bindings ANDOP let_binding_
+      { let (let_pat, let_exp, rev_ands) = $1 in
+        let (pbop_pat, pbop_exp) = $3 in
+        let pbop_loc = symbol_rloc() in
         let and_ = {pbop_op = mkrhs $2 2; pbop_pat; pbop_exp; pbop_loc} in
-        let_pat, let_exp, and_ :: rev_ands }
+        (let_pat, let_exp, and_ :: rev_ands) }
 ;
 fun_binding:
     strict_binding

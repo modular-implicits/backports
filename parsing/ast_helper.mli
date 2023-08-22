@@ -138,7 +138,6 @@ module Exp:
     val newtype: ?loc:loc -> ?attrs:attrs -> string -> expression -> expression
     val pack: ?loc:loc -> ?attrs:attrs -> module_expr -> expression
     val open_: ?loc:loc -> ?attrs:attrs -> open_flag -> lid -> expression -> expression
-               -> expression
     val letop: ?loc:loc -> ?attrs:attrs -> binding_op
                -> binding_op list -> expression -> expression
     val extension: ?loc:loc -> ?attrs:attrs -> extension -> expression
