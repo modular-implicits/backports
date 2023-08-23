@@ -2329,6 +2329,22 @@
 /testsuite/tests/typing-labels/.depend.nt
 /testsuite/tests/typing-labels/.DS_Store
 
+# /testsuite/tests/typing-modular_implicits/
+/testsuite/tests/typing-modular_implicits/*.o
+/testsuite/tests/typing-modular_implicits/*.a
+/testsuite/tests/typing-modular_implicits/*.so
+/testsuite/tests/typing-modular_implicits/*.obj
+/testsuite/tests/typing-modular_implicits/*.cm[ioxa]
+/testsuite/tests/typing-modular_implicits/*.cmx[as]
+/testsuite/tests/typing-modular_implicits/*.annot
+/testsuite/tests/typing-modular_implicits/*.result
+/testsuite/tests/typing-modular_implicits/*.byte
+/testsuite/tests/typing-modular_implicits/*.native
+/testsuite/tests/typing-modular_implicits/program
+/testsuite/tests/typing-modular_implicits/.depend
+/testsuite/tests/typing-modular_implicits/.depend.nt
+/testsuite/tests/typing-modular_implicits/.DS_Store
+
 # /testsuite/tests/typing-misc/
 /testsuite/tests/typing-misc/*.o
 /testsuite/tests/typing-misc/*.a
